@@ -29,7 +29,14 @@
         ], $keys),
     ];
     $totalSpent = $data['totals']['spent'];
-    $hasData = $data['totals']['spent'] + $data['totals']['income'] > 0;
+    $totalIncome = $data['totals']['income'];
+    $hasData = $totalSpent + $totalIncome > 0;
+    // What really happened to the balance: income minus spending, plus the net transfers in or out
+    // of the accounts in Tostão. Money sent to an account that is not imported counts as gone.
+    $kept = $data['totals']['change'];
+    $transfers = $data['totals']['transfers'];
+    $keptRate = $totalIncome > 0 ? round($kept / $totalIncome * 100) : null;
+    $needsAttention = ($alerts['uncategorised'] ?? 0) + ($alerts['transfers'] ?? 0) + ($alerts['banks'] ?? 0) > 0;
 @endphp
 <x-app-layout :title="__('Dashboard')">
     <x-slot name="header">
@@ -38,8 +45,11 @@
             <p class="muted">
                 {{ __('Spent') }} <x-money :cents="$totalSpent" class="font-medium text-ink" />
                 · {{ __('Income') }} <x-money :cents="$data['totals']['income']" class="font-medium text-ink" />
-                · {{ __('Balance') }} <x-money :cents="$data['totals']['income'] - $totalSpent" :signed="true" class="font-medium" />
+                · {{ __('Kept') }} <x-money :cents="$kept" :signed="true" class="font-medium" />@if ($keptRate !== null) <span class="text-muted">({{ $keptRate }}% {{ __('of income') }})</span>@endif
             </p>
+            @if ($transfers !== 0)
+                <p class="muted text-xs">{{ __('Kept includes :amount in transfers. Money sent to an account that is not in Tostão counts as gone; import that account and the transfers cancel out.', ['amount' => \App\Support\Money::format($transfers)]) }}</p>
+            @endif
         </div>
         <div class="flex items-center gap-2">
             <form method="GET" action="{{ route('dashboard') }}">
@@ -58,13 +68,28 @@
     @unless ($hasData)
         <div class="card text-center">
             <h2 class="text-lg font-semibold">{{ __('Nothing to show yet') }}</h2>
-            <p class="muted mx-auto mt-1 max-w-md">{{ __('Add your first transaction or import the CSV your bank gives you. The dashboard fills itself in.') }}</p>
+            <p class="muted mx-auto mt-1 max-w-md">{{ __('Add your first transaction or import the CSV or PDF statement your bank gives you. The dashboard fills itself in.') }}</p>
             <div class="mt-4 flex justify-center gap-2">
                 <a href="{{ route('imports.create') }}" class="btn btn-primary">{{ __('Import a bank file') }}</a>
                 <a href="{{ route('transactions.create') }}" class="btn">{{ __('Add transaction') }}</a>
             </div>
         </div>
     @else
+        {{-- Things that need a person: shown only when there is something to do --}}
+        @if ($needsAttention)
+            <section class="mb-4 flex flex-wrap gap-2 text-sm" aria-label="{{ __('Needs your attention') }}">
+                @if ($alerts['uncategorised'] > 0)
+                    <a href="{{ route('transactions.index', ['category' => 'none']) }}" class="pill hover:bg-line/60">{{ trans_choice(':count transaction has no category yet|:count transactions have no category yet', $alerts['uncategorised'], ['count' => $alerts['uncategorised']]) }}</a>
+                @endif
+                @if ($alerts['transfers'] > 0)
+                    <a href="{{ route('transfers.index') }}" class="pill hover:bg-line/60">{{ trans_choice(':count possible transfer between your accounts|:count possible transfers between your accounts', $alerts['transfers'], ['count' => $alerts['transfers']]) }}</a>
+                @endif
+                @if ($alerts['banks'] > 0)
+                    <a href="{{ route('banks.index') }}" class="pill text-warn hover:bg-line/60">{{ __('A bank connection needs renewing') }}</a>
+                @endif
+            </section>
+        @endif
+
         {{-- Who spends what --}}
         <section class="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]" aria-label="{{ __('Spending by person') }}">
             @foreach ($keys as $key)
@@ -89,6 +114,73 @@
                     </dl>
                 </div>
             @endforeach
+        </section>
+
+        {{-- The month against its plan, and what has been put aside --}}
+        <section class="mt-6 grid gap-4 lg:grid-cols-2">
+            <div class="card">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-semibold">{{ __('Plan') }} <span class="muted font-normal">· {{ $month ? $monthLabel($month) : '' }}</span></h2>
+                    <a href="{{ route('plan.index', array_filter(['month' => $month])) }}" class="muted underline">{{ $plan ? __('Open the plan') : __('Make a plan') }}</a>
+                </div>
+
+                @if ($plan)
+                    @php
+                        $spentRatio = $plan['expenseTotal'] > 0 ? $plan['real']['spent'] / $plan['expenseTotal'] : null;
+                        $leftover = $plan['expenseTotal'] - $plan['real']['spent'];
+                    @endphp
+                    <div class="mt-4">
+                        <div class="flex items-center justify-between text-sm">
+                            <span>{{ __('Spending') }}</span>
+                            <span class="tabular-nums {{ $spentRatio !== null && $spentRatio > 1 ? 'text-bad' : 'text-muted' }}"><x-money :cents="$plan['real']['spent']" /> / <x-money :cents="$plan['expenseTotal']" /></span>
+                        </div>
+                        @if ($spentRatio !== null)
+                            <div class="mt-1.5 h-2 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow="{{ round($spentRatio * 100) }}" aria-valuemin="0" aria-valuemax="100">
+                                <div class="h-full rounded-full {{ $spentRatio > 1 ? 'bg-bad' : ($spentRatio > .85 ? 'bg-warn' : 'bg-good') }}" style="width: {{ min(100, $spentRatio * 100) }}%"></div>
+                            </div>
+                        @endif
+                        <p class="mt-1 text-xs {{ $leftover < 0 ? 'text-bad' : 'text-muted' }}">
+                            @if ($leftover >= 0){{ __(':amount still planned for this month', ['amount' => \App\Support\Money::format($leftover)]) }}@else{{ __('Over the plan by :amount', ['amount' => \App\Support\Money::format(-$leftover)]) }}@endif
+                        </p>
+                    </div>
+                    <dl class="mt-4 space-y-1 border-t border-line pt-3 text-sm">
+                        <div class="flex justify-between"><dt class="text-muted">{{ __('Planned income') }}</dt><dd><x-money :cents="$plan['incomeTotal']" /></dd></div>
+                        <div class="flex justify-between"><dt class="text-muted">{{ __('Real income so far') }}</dt><dd><x-money :cents="$plan['real']['income']" /></dd></div>
+                        <div class="flex justify-between"><dt class="text-muted">{{ __('Planned left over') }}</dt><dd><x-money :cents="$plan['leftAfterSavings']" :signed="true" /></dd></div>
+                    </dl>
+                @else
+                    <p class="muted mt-3 text-sm">{{ __('Write down what comes in and what is meant to go out each month, and it is compared with what really happens here.') }}</p>
+                @endif
+            </div>
+
+            <div class="card">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-semibold">{{ __('Savings and investments') }}</h2>
+                    <a href="{{ route('brokers.index') }}" class="muted underline">{{ __('Investments') }}</a>
+                </div>
+
+                @if (count($wealth['accounts']))
+                    <div class="mt-3 text-3xl font-semibold tracking-tight tabular-nums"><x-money :cents="$wealth['total']" /></div>
+                    @if ($wealth['has_gain'])
+                        @php $gain = $wealth['total'] - $wealth['put_in_total']; @endphp
+                        <div class="muted text-sm">{{ __('Put in') }} <x-money :cents="$wealth['put_in_total']" /> · <span class="{{ $gain >= 0 ? 'text-good' : 'text-bad' }}"><x-money :cents="$gain" :signed="true" /></span></div>
+                    @endif
+                    <ul class="mt-3 divide-y divide-line text-sm">
+                        @foreach ($wealth['accounts'] as $w)
+                            <li class="flex items-center justify-between gap-3 py-2">
+                                <span>{{ $w['account']->name }}@if ($w['valued_on']) <span class="muted text-xs">· {{ \Illuminate\Support\Carbon::parse($w['valued_on'])->locale(app()->getLocale())->translatedFormat('d M') }}</span>@endif</span>
+                                <span class="text-right"><x-money :cents="$w['value']" />@if ($w['gain'] !== null) <span class="block text-xs {{ $w['gain'] >= 0 ? 'text-good' : 'text-bad' }}"><x-money :cents="$w['gain']" :signed="true" /></span>@endif</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                @else
+                    <p class="muted mt-3 text-sm">{{ __('No savings or investment account yet. Create one in Accounts and its value shows up here.') }}</p>
+                @endif
+
+                @if ($keptRate !== null)
+                    <p class="mt-3 border-t border-line pt-3 text-sm text-muted">{{ __('This month') }}: <x-money :cents="$kept" :signed="true" class="font-medium text-ink" /> {{ __('kept') }} ({{ $keptRate }}% {{ __('of income') }})</p>
+                @endif
+            </div>
         </section>
 
         {{-- Charts --}}
@@ -153,8 +245,9 @@
                     <h2 class="font-semibold">{{ __('Accounts') }}</h2>
                     <ul class="mt-2 divide-y divide-line text-sm">
                         @foreach ($data['accounts'] as $a)
-                            <li class="flex justify-between py-2"><span>{{ $a['account']->name }}</span><x-money :cents="$a['balance']" /></li>
+                            <li class="flex justify-between py-2"><span>{{ $a['account']->name }}@if ($a['account']->isInvestment()) <span class="muted text-xs">· {{ __('Investments') }}</span>@endif</span><x-money :cents="$a['balance']" /></li>
                         @endforeach
+                        <li class="flex justify-between py-2 font-semibold"><span>{{ __('Total') }}</span><x-money :cents="$data['accounts']->sum('balance')" /></li>
                     </ul>
                 </div>
 

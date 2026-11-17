@@ -26,7 +26,7 @@ Os requisitos foram poucos e firmes:
 - **Bem documentado.** Quem chega ao repositório deve conseguir instalar, experimentar com dados de demonstração e perceber as decisões sem me perguntar nada.
 - **Um produto fixe**, e não um protótipo: modo escuro, telemóvel, português e inglês, estados vazios com sentido.
 
-Recusei de propósito: ligação direta ao banco (PSD2), várias casas por instalação, aplicação móvel, contas de investimento. Cada uma delas multiplicaria o âmbito sem resolver as perguntas acima.
+Recusei de propósito, na primeira versão: ligação direta ao banco (PSD2), várias casas por instalação, aplicação móvel e contas de investimento. Cada uma delas multiplicaria o âmbito sem resolver as perguntas iniciais. Depois de a usar com extratos reais, parte do que recusei voltou como **camadas opcionais e desligadas por omissão** (ligação ao banco, investimentos), porque o núcleo já estava sólido e a privacidade não ficava em causa. Várias casas e aplicação móvel continuam fora.
 
 ## 3. Como chegámos aqui
 
@@ -61,22 +61,34 @@ Mais detalhe e o modelo de dados em [ARCHITECTURE.md](ARCHITECTURE.md).
 - **SQLite e MySQL:** a suite corre nos dois. Não há SQL específico de um motor.
 - **Os testes apanharam um erro real.** Em SQLite o Eloquent guarda as datas como `2026-11-30 00:00:00`; um `BETWEEN '2026-11-01' AND '2026-11-30'` deixava de fora o último dia de cada mês, tanto nos filtros como na deteção de duplicados. Foi encontrado por um teste de intervalo de datas e corrigido num único ponto (`Transaction::betweenDates()`).
 - **Um teste que protege as traduções:** falha se alguma frase da interface não tiver tradução.
+- **Os leitores de PDF e de APIs externas também são testados:** o do PDF com texto inventado no mesmo formato (incluindo quebras de página e saldo negativo) e com a verificação do saldo final; os dos fornecedores com respostas HTTP simuladas.
 - **Estilo automático** (Laravel Pint) e um fluxo de integração contínua no GitHub Actions.
 
 ## 6. Resultado
 
 Uma aplicação que se instala com `composer setup`, abre com um casal de demonstração inventado (`composer demo`) e responde às perguntas originais: quanto gastámos, em quê, quem gasta o quê, quanto falta no orçamento de cada categoria e quem deve a quem.
 
-Números do repositório: cerca de 2.500 linhas de PHP de aplicação, cerca de 1.150 de testes (116 testes), 42 ficheiros Blade, 4 documentos de apoio e um guia de importação.
+Números do repositório: cerca de 6.000 linhas de PHP (aplicação, rotas, configuração e migrações), cerca de 1.800 de testes (194 testes), 48 ficheiros Blade e 7 documentos de apoio.
+
+O que a aplicação ganhou depois de ser usada com extratos reais, por ordem de aparecimento:
+
+- **Leitura de extratos em PDF** (Millennium bcp): o sinal de cada linha sai do saldo corrente, e os movimentos são conferidos com o saldo final impresso, para um erro de leitura nunca passar em silêncio.
+- **Importação robusta:** ficheiros UTF-16, extratos com dados da conta antes da tabela, e períodos que se sobrepõem (as linhas que já existem ficam como "possível duplicado" em vez de se repetirem).
+- **Plano do mês** com despesas fixas, variáveis e opcionais, por pessoa e por grupo, comparado com o que se gastou de facto.
+- **Edição no sítio** na tabela de movimentos, edição em massa e regras com condições (montante, exclusões).
+- **Transferências entre as próprias contas** propostas e confirmadas, para não contarem como despesa.
+- **Investimentos:** contas com o valor por dia, depósitos como transferências, e um fornecedor para o Trading 212.
+- **Ligação opcional ao banco** por open banking, atrás de uma interface (um fornecedor é uma classe e uma linha de configuração), e cópias de segurança agendadas.
 
 ## 7. Limites e o que faria a seguir
 
 Sou direto sobre o que não está feito:
 
-- Foi testado com **um formato** de extrato real (e o que a fixture reproduz). Outros bancos vão exigir ajustes; por isso o importador mostra sempre uma pré-visualização e o guia explica como diagnosticar. É o ponto mais provável de os utilizadores precisarem de ajuda.
+- Foi testado com **um banco** (extratos CSV e PDF do Millennium bcp) e com o que a fixture reproduz. Outros bancos vão exigir ajustes; por isso o importador mostra sempre uma pré-visualização, o PDF só é aceite nos formatos conhecidos, e o guia explica como diagnosticar. É o ponto mais provável de os utilizadores precisarem de ajuda.
+- A **ligação ao banco (Enable Banking) e ao Trading 212 foi escrita a partir da documentação pública e testada com respostas simuladas**, não contra os serviços reais. A XTB desativou a API em 2025, por isso o valor dessa conta escreve-se à mão.
 - A divisão é **sempre em partes iguais**. Proporcional ao rendimento é o próximo passo natural.
 - Não incluí Docker porque não o consegui testar no meu ambiente; prefiro não publicar o que não verifiquei.
-- O fluxo de integração contínua só fica verificado depois de correr no GitHub.
+- Sem autenticação em dois passos, e um movimento não se divide por várias categorias.
 
 ## 8. Como foi construído
 
@@ -117,7 +129,7 @@ O repositório é pequeno o suficiente para ser lido por inteiro e real o sufici
 
 Linhas curtas, prontas a adaptar:
 
-- **Tostão** (projeto open source): aplicação Laravel auto-alojada de finanças para casais e casas partilhadas, com importação de extratos CSV, deteção de duplicados, painel por pessoa e acerto de contas. 100+ testes em Pest, SQLite e MySQL, interface PT/EN com modo escuro.
+- **Tostão** (projeto open source): aplicação Laravel auto-alojada de finanças para casais e casas partilhadas, com importação de extratos CSV e PDF (verificada com o saldo final), deteção de duplicados e de sobreposições, plano mensal, painel por pessoa, investimentos e acerto de contas, e ligação opcional a bancos e corretoras. 194 testes em Pest, SQLite e MySQL, interface PT/EN com modo escuro.
 - Decisões de engenharia documentadas: dinheiro em cêntimos, importação idempotente, agregação independente do motor de base de dados.
 - Desenvolvido com um agente de IA: especificação, arquitetura, código e testes, com validação contínua.
 

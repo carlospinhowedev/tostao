@@ -2,6 +2,7 @@
     $links = [
         ['dashboard', __('Dashboard'), 'dashboard'],
         ['transactions.index', __('Transactions'), 'transactions.*'],
+        ['plan.index', __('Plan'), 'plan.*'],
         ['imports.create', __('Import'), 'imports.*'],
         ['settle.index', __('Settle up'), 'settle.*'],
     ];

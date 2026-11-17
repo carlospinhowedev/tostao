@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Rules\OwnerChoice;
 use App\Services\CsvImporter;
 use App\Services\ImportService;
+use App\Statements\PdfStatementReader;
 use App\Support\DateParser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ use Illuminate\View\View;
  */
 class ImportController extends Controller
 {
-    public function __construct(private CsvImporter $importer, private ImportService $imports) {}
+    public function __construct(private CsvImporter $importer, private ImportService $imports, private PdfStatementReader $pdfs) {}
 
     public function create(): View
     {
@@ -33,28 +34,36 @@ class ImportController extends Controller
     {
         $request->validate([
             'account_id' => ['required', 'exists:accounts,id'],
-            'file' => ['required', 'file', 'max:5120', 'extensions:csv,txt,tsv'],
+            'file' => ['required', 'file', 'max:5120', 'extensions:csv,txt,tsv,pdf'],
         ]);
 
+        $bytes = $request->file('file')->get();
         $token = (string) Str::uuid();
-        Storage::disk('local')->put("imports/{$token}.csv", $request->file('file')->get());
+
+        if (PdfStatementReader::isPdf($bytes)) {
+            // Say at once if this layout is not one we can read, instead of at the next step.
+            if ($this->pdfs->read($bytes) === null) {
+                return back()->withErrors(['file' => __('This PDF is not a statement layout Tostão can read yet. Download the movements as CSV instead.')]);
+            }
+            Storage::disk('local')->put("imports/{$token}.pdf", $bytes);
+        } else {
+            Storage::disk('local')->put("imports/{$token}.csv", $bytes);
+        }
 
         return redirect()->route('imports.review', ['token' => $token, 'account_id' => $request->account_id]);
     }
 
     public function review(Request $request, string $token): View
     {
-        $text = $this->text($token);
         $account = Account::findOrFail($request->query('account_id'));
-        $settings = $this->settings($request, $text);
-
-        $result = $this->importer->parse($text, $settings['delimiter'], $settings['has_header'], $settings['map'], $settings['date_format'], $settings['decimal']);
+        ['result' => $result, 'settings' => $settings, 'pdf' => $pdf] = $this->read($request, $token);
 
         return view('imports.review', [
             'token' => $token,
             'account' => $account,
             'settings' => $settings,
-            'header' => $settings['columns'],
+            'pdf' => $pdf,
+            'header' => $settings['columns'] ?? [],
             'preview' => $this->imports->prepare($account, $result['rows']),
             'skipped' => $result['skipped'],
             'categories' => Category::orderBy('name')->get(),
@@ -72,11 +81,8 @@ class ImportController extends Controller
             'owner.*' => ['nullable', new OwnerChoice(allowEmpty: true)],
         ], ['rows.required' => __('Select at least one row to import.')]);
 
-        $text = $this->text($token);
         $account = Account::findOrFail($request->account_id);
-        $settings = $this->settings($request, $text);
-
-        $result = $this->importer->parse($text, $settings['delimiter'], $settings['has_header'], $settings['map'], $settings['date_format'], $settings['decimal']);
+        ['result' => $result] = $this->read($request, $token);
         $selected = array_map('intval', $request->input('rows'));
 
         $items = [];
@@ -93,16 +99,38 @@ class ImportController extends Controller
         }
 
         $count = $this->imports->commit($account, $items);
-        Storage::disk('local')->delete("imports/{$token}.csv");
+        Storage::disk('local')->delete(["imports/{$token}.csv", "imports/{$token}.pdf"]);
 
         return redirect()->route('transactions.index')->with('status', trans_choice(':count transaction imported.|:count transactions imported.', $count, ['count' => $count]));
     }
 
-    private function text(string $token): string
+    /**
+     * Rows from the stored file, whichever kind it is. A PDF statement is read by its
+     * own parser and needs no column mapping; a CSV goes through the mapping settings.
+     *
+     * @return array{result: array<string, mixed>, settings: ?array<string, mixed>, pdf: ?array<string, mixed>}
+     */
+    private function read(Request $request, string $token): array
     {
-        abort_unless(Str::isUuid($token) && Storage::disk('local')->exists("imports/{$token}.csv"), 404);
+        abort_unless(Str::isUuid($token), 404);
+        $disk = Storage::disk('local');
 
-        return $this->importer->normalise(Storage::disk('local')->get("imports/{$token}.csv"));
+        if ($disk->exists("imports/{$token}.pdf")) {
+            $pdf = $this->pdfs->read($disk->get("imports/{$token}.pdf"));
+            abort_if($pdf === null, 404);
+
+            return ['result' => ['rows' => $pdf['rows'], 'skipped' => $pdf['skipped']], 'settings' => null, 'pdf' => $pdf];
+        }
+
+        abort_unless($disk->exists("imports/{$token}.csv"), 404);
+        $text = $this->importer->normalise($disk->get("imports/{$token}.csv"));
+        $settings = $this->settings($request, $text);
+
+        return [
+            'result' => $this->importer->parse($text, $settings['delimiter'], $settings['has_header'], $settings['map'], $settings['date_format'], $settings['decimal']),
+            'settings' => $settings,
+            'pdf' => null,
+        ];
     }
 
     /**

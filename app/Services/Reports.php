@@ -35,8 +35,12 @@ class Reports
         $members = User::orderBy('id')->get();
         $categories = Category::all()->keyBy('id');
 
-        $tx = Transaction::query()->inMonth($month)->get()
-            ->reject(fn ($t) => $this->isTransfer($t, $categories));
+        $every = Transaction::query()->inMonth($month)->get();
+        $tx = $every->reject(fn ($t) => $this->isTransfer($t, $categories));
+
+        // Money that only moved between accounts. Counted nowhere as spending or income, but
+        // it did leave or enter the accounts in Tostão, so it is part of what really changed.
+        $transfers = (int) $every->filter(fn ($t) => $this->isTransfer($t, $categories))->sum('amount_cents');
 
         $keys = $members->pluck('id')->map(fn ($id) => (string) $id)->push(self::SHARED)->all();
         $people = [];
@@ -57,6 +61,10 @@ class Reports
             'totals' => [
                 'spent' => array_sum(array_column($people, 'spent')),
                 'income' => array_sum(array_column($people, 'income')),
+                // Net transfers: negative means more left for accounts outside Tostão than came back.
+                'transfers' => $transfers,
+                // What really happened to the balance of the accounts in Tostão over the period.
+                'change' => array_sum(array_column($people, 'income')) - array_sum(array_column($people, 'spent')) + $transfers,
             ],
             'byCategory' => $this->byCategory($tx, $categories, $keys),
             'trend' => $this->trend($month, $categories, $keys),

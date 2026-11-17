@@ -14,8 +14,12 @@ class ImportService
      * Decorate parsed rows with a stable hash, a duplicate status and the
      * category/owner suggested by the rules.
      *
-     * Status: "new", "duplicate" (already imported) or "maybe" (a manual
-     * transaction with the same date and amount exists).
+     * Status: "new", "duplicate" (this exact row was imported before) or "maybe"
+     * (the account already has a transaction with the same date and amount that
+     * no row of this file accounts for: typed in by hand, or imported from
+     * another file or format where the bank worded the description differently).
+     * A "maybe" is never ticked by default, so a statement that overlaps an
+     * earlier import does not silently double up.
      *
      * @param  list<array{line: int, date: string, description: string, amount_cents: int}>  $rows
      * @return list<array<string, mixed>>
@@ -32,12 +36,15 @@ class ImportService
             ->get(['import_hash', 'date', 'amount_cents']);
 
         $hashes = $existing->pluck('import_hash')->filter()->flip();
-        $manual = $existing->whereNull('import_hash')
-            ->map(fn ($t) => $t->date->format('Y-m-d').'|'.$t->amount_cents)->flip();
+
+        // How many transactions already sit on each date and amount, whatever their source.
+        $slots = $existing->countBy(fn ($t) => $t->date->format('Y-m-d').'|'.$t->amount_cents);
 
         $seen = [];
-        $out = [];
+        $prepared = [];
+        $taken = [];
 
+        // First pass: exact repeats, which use up their own slot.
         foreach ($rows as $row) {
             $key = $row['date'].'|'.$row['amount_cents'].'|'.mb_strtolower($row['description']);
             $seen[$key] = ($seen[$key] ?? 0) + 1;
@@ -50,11 +57,24 @@ class ImportService
                 $hash = hash('sha256', $account->id.'|ref|'.$row['external_id']);
             }
 
+            $slot = $row['date'].'|'.$row['amount_cents'];
+            $duplicate = $hashes->has($hash);
+            if ($duplicate) {
+                $taken[$slot] = ($taken[$slot] ?? 0) + 1;
+            }
+
+            $prepared[] = [$row, $hash, $slot, $duplicate];
+        }
+
+        // Second pass: what is left of an occupied slot makes the next rows "maybe".
+        $out = [];
+        foreach ($prepared as [$row, $hash, $slot, $duplicate]) {
             $status = 'new';
-            if ($hashes->has($hash)) {
+            if ($duplicate) {
                 $status = 'duplicate';
-            } elseif ($manual->has($row['date'].'|'.$row['amount_cents'])) {
+            } elseif (($slots[$slot] ?? 0) - ($taken[$slot] ?? 0) > 0) {
                 $status = 'maybe';
+                $taken[$slot] = ($taken[$slot] ?? 0) + 1;
             }
 
             $out[] = $row + ['hash' => $hash, 'status' => $status] + $this->rules->suggest($row['description'], $row['amount_cents']);

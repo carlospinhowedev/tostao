@@ -1,6 +1,6 @@
 @php
     $s = $settings;
-    $delim = $s['delimiter'] === "\t" ? 'tab' : $s['delimiter'];
+    $delim = $s ? ($s['delimiter'] === "\t" ? 'tab' : $s['delimiter']) : null;
     $colSelect = function (string $name, ?int $current, bool $optional = false) use ($header) {
         $html = '<select name="'.$name.'" class="input">';
         if ($optional) {
@@ -23,7 +23,24 @@
         </div>
     </x-slot>
 
+    @if ($pdf)
+        @php
+            $money = fn ($c) => \App\Support\Money::format($c);
+        @endphp
+        <div class="card mb-6 space-y-2">
+            <h2 class="font-semibold">{{ __('Statement read from the PDF') }}</h2>
+            <p class="muted text-sm">{{ $pdf['bank'] }} · {{ \Illuminate\Support\Carbon::parse($pdf['from'])->format('d/m/Y') }} – {{ \Illuminate\Support\Carbon::parse($pdf['to'])->format('d/m/Y') }}</p>
+            <p class="text-sm">{{ __('Opening balance') }} <strong>{{ $money($pdf['opening_cents']) }}</strong> · {{ __('closing balance') }} <strong>{{ $money($pdf['closing_cents']) }}</strong></p>
+            @if ($pdf['balanced'])
+                <p class="text-sm text-good">✓ {{ __('Checked: the :count movements add up exactly to the closing balance printed on the statement.', ['count' => count($pdf['rows'])]) }}</p>
+            @else
+                <p class="text-sm text-bad">{{ __('Warning: the movements do not add up to the closing balance on the statement. Some lines were not read correctly, so check before importing.') }}</p>
+            @endif
+        </div>
+    @endif
+
     {{-- 1. Mapping (GET: refreshes the preview) --}}
+    @unless ($pdf)
     <form method="GET" action="{{ route('imports.review', $token) }}" class="card mb-6 space-y-4">
         <input type="hidden" name="account_id" value="{{ $account->id }}">
         <h2 class="font-semibold">{{ __('1. How to read the file') }}</h2>
@@ -42,6 +59,7 @@
         </div>
         <button class="btn">{{ __('Update preview') }}</button>
     </form>
+    @endunless
 
     @if (count($skipped))
         <div class="flash flash-error mb-4">
@@ -57,11 +75,13 @@
         <form method="POST" action="{{ route('imports.commit', $token) }}" x-data="{ all: true }">
             @csrf
             <input type="hidden" name="account_id" value="{{ $account->id }}">
-            <input type="hidden" name="delimiter" value="{{ $delim }}">
-            <input type="hidden" name="date_format" value="{{ $s['date_format'] }}">
-            <input type="hidden" name="decimal" value="{{ $s['decimal'] }}">
-            <input type="hidden" name="has_header" value="{{ $s['has_header'] ? 1 : 0 }}">
-            @foreach ($s['map'] as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+            @unless ($pdf)
+                <input type="hidden" name="delimiter" value="{{ $delim }}">
+                <input type="hidden" name="date_format" value="{{ $s['date_format'] }}">
+                <input type="hidden" name="decimal" value="{{ $s['decimal'] }}">
+                <input type="hidden" name="has_header" value="{{ $s['has_header'] ? 1 : 0 }}">
+                @foreach ($s['map'] as $k => $v)<input type="hidden" name="{{ $k }}" value="{{ $v }}">@endforeach
+            @endunless
 
             <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h2 class="font-semibold">{{ __('2. Pick the rows to import') }} <span class="muted font-normal">· {{ trans_choice(':count new row|:count new rows', $newCount, ['count' => $newCount]) }}</span></h2>

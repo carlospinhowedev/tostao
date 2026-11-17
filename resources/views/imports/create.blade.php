@@ -14,8 +14,9 @@
                     @foreach ($accounts as $a)<option value="{{ $a->id }}">{{ $a->name }}</option>@endforeach
                 </select>
             </x-field>
-            <x-field :label="__('CSV file')" for="file">
-                <input id="file" type="file" name="file" accept=".csv,.txt,.tsv" required class="input file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent-ink">
+            <x-field :label="__('CSV or PDF file')" for="file">
+                @error('file')<p class="mb-1 text-sm text-bad">{{ $message }}</p>@enderror
+                <input id="file" type="file" name="file" accept=".csv,.txt,.tsv,.pdf" required class="input file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-accent-ink">
             </x-field>
             <button class="btn btn-primary">{{ __('Continue') }}</button>
         </form>
@@ -28,6 +29,8 @@
                 <li>{{ __('Amounts like -5,50 €, 1.234,56 or (12.30)') }}</li>
                 <li>{{ __('One amount column, or separate debit and credit') }}</li>
                 <li>{{ __('Accents in older Windows files') }}</li>
+                <li>{{ __('UTF-16 files and statements with account details above the table') }}</li>
+                <li>{{ __('PDF statements: Millennium bcp "Extrato combinado", checked against the closing balance') }}</li>
                 <li>{{ __('Rows already imported are flagged, so importing twice is safe') }}</li>
             </ul>
         </aside>

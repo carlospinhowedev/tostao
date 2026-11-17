@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Account;
 use App\Models\Category;
+use App\Models\PlanItem;
 use App\Models\RecurringTransaction;
 use App\Models\Rule;
 use App\Models\Transaction;
@@ -117,6 +118,44 @@ class DemoSeeder extends Seeder
             }
             $make($joint, $rand(10, 28), $pick(['Jantar com amigos', 'Restaurante Mar Alto']), -$money(2800, 5500), 'Eating out', null, $pick([$ana, $rui]));
             $make($joint, $day(4), 'Comissão da conta', -800, 'Bank fees', null);
+        }
+
+        // Savings and a brokerage account: money put in (a transfer, never spending) and what it is worth.
+        $broker = Account::create(['name' => 'Corretora', 'type' => 'investment', 'owner_id' => $rui->id]);
+        Account::create(['name' => 'Conta poupança', 'type' => 'savings', 'owner_id' => null, 'opening_balance_cents' => 320000]);
+        foreach (range(0, 3) as $m) {
+            $when = $start->copy()->addMonths($m);
+            $make($broker, $when->copy()->day(3)->format('Y-m-d'), 'Depósito na corretora', 15000, 'Transfers', $rui);
+            $broker->recordValuation($when->copy()->endOfMonth()->min(now())->format('Y-m-d'), 15000 * ($m + 1) + [0, 600, -400, 1850][$m], 'manual');
+        }
+
+        // The plan: the month on paper (invented figures, like everything else here).
+        // Fixed = green, variable = amber, optional = plain.
+        foreach ([
+            // name, kind, cents, owner, nature, group, category, months
+            ['Vencimento Ana', 'income', 145000, $ana, null, null, null, null],
+            ['Vencimento Rui', 'income', 132000, $rui, null, null, null, null],
+            ['Subsídio de Natal Ana', 'income', 72500, $ana, null, null, null, [11]],
+            ['Subsídio de férias Rui', 'income', 66000, $rui, null, null, null, [7]],
+            ['Prestação da casa', 'expense', 55000, null, 'fixed', null, 'Mortgage and rent', null],
+            ['Seguro multirriscos', 'expense', 2150, null, 'fixed', null, 'Insurance', null],
+            ['Condomínio', 'expense', 3500, null, 'fixed', null, 'Home and bills', null],
+            ['MEO internet e TV', 'expense', 4990, null, 'fixed', 'Subscriptions', 'Home and bills', null],
+            ['Eletricidade', 'expense', 3000, null, 'variable', null, 'Home and bills', null],
+            ['Água', 'expense', 1500, null, 'variable', null, 'Home and bills', null],
+            ['Supermercado', 'expense', 40000, null, 'variable', null, 'Groceries', null],
+            ['Comida do cão', 'expense', 2250, null, 'variable', 'Pet', null, null],
+            ['Veterinário', 'expense', 2500, null, 'variable', 'Pet', null, null],
+            ['Combustível', 'expense', 9000, $rui, 'variable', null, 'Fuel and transport', null],
+            ['Netflix', 'expense', 1299, $rui, 'optional', 'Subscriptions', 'Leisure', null],
+            ['Ginásio', 'expense', 2500, $ana, 'optional', null, 'Leisure', null],
+            ['Cafés e restaurantes', 'expense', 6000, $ana, 'optional', null, 'Eating out', null],
+            ['Poupança mensal', 'saving', 20000, null, null, null, null, null],
+        ] as [$name, $kind, $cents, $owner, $nature, $group, $category, $months]) {
+            PlanItem::create([
+                'name' => $name, 'kind' => $kind, 'amount_cents' => $cents, 'owner_id' => $owner?->id, 'nature' => $nature,
+                'group_name' => $group ? __($group) : null, 'category_id' => $category ? $cat($category) : null, 'months' => $months,
+            ]);
         }
 
         // Recurring: the things that will keep appearing by themselves

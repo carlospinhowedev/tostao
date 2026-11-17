@@ -16,7 +16,7 @@ Um movimento pertence a um membro ou à casa. `null` significa **comum**, não "
 ### Transferências não são despesa
 Passar 900 € da conta pessoal para a conjunta não é gastar dinheiro. As categorias têm um tipo (`expense`, `income`, `transfer`) e tudo o que soma dinheiro passa por `Reports`, que ignora as transferências. Sem isto, qualquer painel de um casal com contas separadas mente.
 
-### Importação sem estado e sem ligação ao banco
+### Importação sem estado
 O ficheiro é guardado num identificador aleatório (UUID) e, em cada passo, relido e interpretado de novo com as definições do formulário. Não há tabela de "importações" nem sessão a gerir: o ficheiro é a única fonte de verdade até o utilizador confirmar. As linhas ganham uma assinatura `sha256(conta | data | montante | descrição | n.º de ocorrência)` guardada numa coluna única, e é a base de dados que garante que importar duas vezes é seguro, mesmo que a validação da interface seja contornada.
 
 ### Agregação em PHP, não em SQL
@@ -28,19 +28,40 @@ Quem aloja em casa raramente configura um agendador. Por isso o painel gera os r
 ### Bancos atrás de uma interface
 A ligação aos bancos (opcional) não fala com nenhum banco em concreto. `App\Banking\BankProvider` descreve o que é preciso (lista de bancos, consentimento, movimentos) e `BankRegistry` descobre os fornecedores em `config/tostao.php`. A lista de bancos é sempre devolvida pelo fornecedor, nunca escrita no código. Os movimentos entram pelo `ImportService`, o mesmo caminho do CSV, por isso regras e duplicados não têm uma segunda implementação. Ver [BANKS.md](BANKS.md).
 
+### Extratos em PDF: o saldo como prova
+Um PDF de extrato não tem colunas de débito e crédito depois de convertido em texto. O leitor (`app/Statements`, um por layout de banco) deduz o sinal de cada linha pelo saldo corrente e, no fim, confere que os movimentos somam o saldo final impresso. Se não somarem, a página avisa. É uma verificação que o CSV não oferece, e muda o PDF de "mais uma fonte" para a fonte mais fiável.
+
+### Sobreposição de importações
+A unicidade por assinatura apanha a mesma linha com a mesma descrição, mas dois formatos do mesmo banco podem descrever o mesmo movimento de maneira diferente. Por isso, as linhas que coincidem em data e montante com um movimento que nenhuma linha do ficheiro explica ficam "possível duplicado" e desmarcadas, em vez de entrarem em silêncio. Cada linha só "gasta" um movimento existente, para três cafés iguais continuarem a ser três.
+
+### O plano é dado, não cálculo
+O plano do mês (`plan_items`) descreve o que se espera: receita, despesa (fixa, variável ou opcional), poupança, de quem, em que grupo e em que meses. Nada nele altera movimentos. O real vem dos movimentos, ligado ao plano pela categoria de cada linha, e a página compara os dois.
+
+### Investimentos: valor e fronteira, não operações
+Uma conta de investimento guarda o valor por dia (`account_valuations`) e só o dinheiro que cruza a fronteira da casa (depósitos e levantamentos, como transferências). As compras e vendas não se registam: não interessam a um orçamento e fariam passar investir por gastar. Os corretores com API ficam atrás de `BrokerProvider`, como os bancos atrás de `BankProvider`.
+
+### Transferências entre as próprias contas
+O que sai de uma conta e entra noutra aparece nos dois extratos. O `TransferMatcher` propõe os pares (mesmo montante, contas diferentes, até três dias) e só propõe os inequívocos: com dois candidatos, perguntar é melhor do que adivinhar. A pessoa confirma e a categoria "transferência" tira ambos das despesas e receitas.
+
 ### Interface sem dependências externas em runtime
 Tipo de letra (Inter) e bibliotecas vão compiladas no próprio build. Nenhum pedido a CDNs ou serviços de terceiros: coerente com uma aplicação cuja promessa é privacidade. As cores são variáveis CSS, o modo escuro está num só sítio (`resources/css/app.css`).
 
 ## Modelo de dados
 
 ```
-users ─────────┬──< accounts          (owner_id nulo = conta conjunta)
+users ─────────┬──< accounts          (owner_id nulo = conta conjunta; type inclui investment)
                ├──< transactions      (owner_id nulo = comum; paid_by_id)
                ├──< recurring_transactions
-               ├──< rules             (set_owner distingue "comum" de "não alterar")
+               ├──< rules             (set_owner distingue "comum" de "não alterar";
+               │                       exclude_pattern e amount_multiple_cents opcionais)
+               ├──< plan_items        (receita, despesa, poupança; owner_id nulo = comum)
                └──< settlements       (from_user_id, to_user_id)
 
 accounts ──< transactions >── categories (kind: expense | income | transfer; monthly_budget_cents)
+accounts ──< account_valuations         (valor de uma conta de investimento num dia)
+accounts ──< bank_accounts >── bank_connections   (open banking, opcional; sessão cifrada)
+accounts ──< broker_links                         (corretora → conta, opcional)
+plan_items >── categories                         (liga o plano ao real)
 ```
 
 `transactions.import_hash` é único: é a rede de segurança contra duplicados.
@@ -63,9 +84,17 @@ app/
     SettleUp.php           quem deve a quem
     RecurringService.php   geração dos movimentos vencidos
     DefaultData.php        categorias e conta de arranque
+    PlanReport.php         o plano do mês e o plano contra o real
+    TransferMatcher.php    pares de transferências entre contas próprias
+    BankSync.php           movimentos do banco, pelo mesmo caminho do CSV
+    BrokerSync.php         valor e depósitos de uma corretora
+    Backup.php             cópia consistente da base SQLite
+  Statements/              um leitor de PDF por layout de banco (verifica o saldo final)
+  Banking/                 BankProvider, registo e fornecedores (Enable Banking, demo)
+  Brokers/                 BrokerProvider, registo e Trading 212
 resources/views/           Blade; componentes: x-money, x-field, x-owner-options
-tests/Unit                 lógica pura (valores, datas, CSV, divisão)
-tests/Feature              fluxos completos (importação, painel, acertos, gestão)
+tests/Unit                 lógica pura (valores, datas, CSV, leitor de PDF, divisão)
+tests/Feature              fluxos completos (importação, plano, transferências, investimentos, painel, acertos)
 ```
 
 ## Testes

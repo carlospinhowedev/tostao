@@ -18,7 +18,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/).
 - `tostao:backup` writes a consistent SQLite snapshot, keeps the newest ones, and runs every night.
 - Rules can skip descriptions that contain a given word.
 
+- The monthly plan (`docs/PLAN.md`): planned income, spending and savings by person, group and how predictable each cost is (fixed, variable but required, optional), a share of the shared costs per person, lines that only apply in some months, and a comparison with real spending through each line's category.
+
+- Import of PDF statements (Millennium bcp "Extrato combinado"): the sign of each line is read from the running balance, and the movements are checked against the closing balance printed on the statement. One parser class per bank layout.
+
+- The dashboard follows the rest of the app: how much was kept (and its share of income), the month against its plan, savings and investment accounts with what was put in and the gain, a total across accounts, and a strip with only what needs attention (uncategorised movements, possible transfers, bank links to renew).
+
 ### Fixed
+- Importing a statement that overlaps an earlier import (for example a mid-month export followed by the full-month PDF) no longer doubles up rows when the bank words a description differently: rows that match an existing transaction by date and amount are flagged as possible duplicates and left unticked.
 - CSV import now reads UTF-16 files (with or without a byte order mark) and statements that have account details above the header row, as exported by Millennium bcp. Previously these crashed the review page.
 
 ### Changed

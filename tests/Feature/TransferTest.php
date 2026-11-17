@@ -72,7 +72,7 @@ it('confirms ticked pairs as transfers and ignores pairs that were not proposed'
         ->and($other->fresh()->category_id)->toBeNull();
 
     // And they no longer count as spending or income.
-    expect((new Reports)->dashboard('2026-11')['totals'])->toBe(['spent' => 999, 'income' => 0]);
+    expect((new Reports)->dashboard('2026-11')['totals'])->toMatchArray(['spent' => 999, 'income' => 0, 'transfers' => 0, 'change' => -999]);
 });
 
 it('asks for something to be ticked', function () {

@@ -30,3 +30,7 @@ Thumbs.db
 *.pem
 *.key
 /storage/bank-keys/
+
+# Real bank statements must never be committed
+/docs/extratos*/
+*.pdf

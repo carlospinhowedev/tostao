@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\MemberController;
+use App\Http\Controllers\PlanController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RecurringController;
 use App\Http\Controllers\RuleController;
@@ -42,6 +43,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/banks/{connection}/link', [BankController::class, 'link'])->name('banks.link');
     Route::post('/banks/{connection}/sync', [BankController::class, 'sync'])->name('banks.sync');
     Route::delete('/banks/{connection}', [BankController::class, 'destroy'])->name('banks.destroy');
+
+    Route::get('/plan', [PlanController::class, 'index'])->name('plan.index');
+    Route::post('/plan', [PlanController::class, 'store'])->name('plan.store');
+    Route::put('/plan/{item}', [PlanController::class, 'update'])->name('plan.update');
+    Route::delete('/plan/{item}', [PlanController::class, 'destroy'])->name('plan.destroy');
 
     Route::get('/transfers', [TransferController::class, 'index'])->name('transfers.index');
     Route::post('/transfers', [TransferController::class, 'confirm'])->name('transfers.confirm');

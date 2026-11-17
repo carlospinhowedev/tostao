@@ -65,3 +65,23 @@ Se abrires um issue por causa de um banco que não funciona, **apaga os dados re
 ## Extratos com cabeçalho a meio e codificação UTF-16
 
 Alguns bancos (o Millennium bcp, por exemplo) exportam o ficheiro em UTF-16 e põem algumas linhas com dados da conta (saldo, período) antes da tabela de movimentos. O Tostão deteta a codificação, procura a linha de cabeçalho (a primeira que tem uma coluna de data e uma de montante) e ignora o que vem antes, bem como linhas de rodapé de uma só coluna. Montantes como `-20.00` e `1113.32` são lidos com o ponto como separador decimal.
+
+## Extratos em PDF (Millennium bcp)
+
+O "Extrato combinado" mensal do Millennium bcp pode ser carregado diretamente, sem converter para CSV. Na página **Importar**, escolhe a conta e o PDF; o resto é igual aos CSV (revisão linha a linha, regras de categoria, duplicados assinalados).
+
+O PDF não tem colunas separadas de débito e crédito, por isso o Tostão deduz o sinal de cada linha pelo saldo que vem a seguir: se o saldo desceu, saiu dinheiro; se subiu, entrou. Isso permite uma verificação que o CSV não dá: no fim, os movimentos têm de somar exatamente o **saldo final** impresso no extrato. Se não somarem, a página avisa que alguma linha foi mal lida, em vez de importar em silêncio.
+
+- Só são lidos os movimentos da conta à ordem. Os pagamentos de prestações do empréstimo e as secções do cartão de crédito do mesmo PDF não são movimentos desta conta.
+- Cada banco desenha o PDF à sua maneira: há um leitor por formato (`app/Statements`). Outro formato mostra "não é um extrato que o Tostão saiba ler" e deves usar o CSV. Para acrescentar um banco, implementa `StatementParser`.
+- A extração do texto é feita em PHP (`smalot/pdfparser`), sem programas externos.
+
+## Importar um período que se sobrepõe a um anterior
+
+Podes importar um extrato a meio do mês e, mais tarde, o extrato completo desse mês. Cada linha é comparada com o que a conta já tem:
+
+- **"Já importado"**: a mesma linha, com a mesma descrição, já entrou. Fica de fora.
+- **"Possível duplicado"**: a conta já tem um movimento com a mesma data e montante que nenhuma linha deste ficheiro explica (escrito à mão, ou importado de outro ficheiro ou formato em que o banco escreveu a descrição de outra maneira, por exemplo com "CONTACTLESS" no fim). Fica **desmarcado** por omissão; se for mesmo um movimento novo, marca-o.
+- **"Novo"**: não há nada igual. Fica marcado.
+
+Dois cafés iguais no mesmo dia continuam a ser dois movimentos: cada linha só "gasta" um movimento existente.

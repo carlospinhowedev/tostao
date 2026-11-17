@@ -3,6 +3,8 @@
 use App\Models\Rule;
 use App\Models\Transaction;
 use App\Services\CsvImporter;
+use App\Services\ImportService;
+use App\Statements\PdfStatementReader;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -169,4 +171,105 @@ it('reads the header, delimiter, dates and dot decimals of that statement', func
         ->and($result['skipped'])->toBe([])
         ->and(array_column($result['rows'], 'amount_cents'))->toBe([-340, 125000, -108000])
         ->and($result['rows'][0]['date'])->toBe('2026-11-16');
+});
+
+/** A reader that returns a canned statement, so the flow can be tested without a real PDF. */
+function fakePdfReader(): void
+{
+    app()->instance(PdfStatementReader::class, new class extends PdfStatementReader
+    {
+        public function read(string $bytes): ?array
+        {
+            return [
+                'bank' => 'Banco Exemplo, extrato combinado',
+                'rows' => [
+                    ['line' => 10, 'date' => '2026-03-01', 'description' => 'COMPRA 1234 PADARIA CENTRAL', 'amount_cents' => -1250],
+                    ['line' => 12, 'date' => '2026-03-02', 'description' => 'TRF. P/O EMPRESA EXEMPLO LDA', 'amount_cents' => 150000],
+                ],
+                'skipped' => [], 'opening_cents' => 100000, 'closing_cents' => 248750,
+                'from' => '2026-03-01', 'to' => '2026-03-31', 'balanced' => true,
+            ];
+        }
+    });
+}
+
+it('imports a PDF statement through the same review step as a CSV', function () {
+    ['account' => $account] = household();
+    fakePdfReader();
+
+    $response = $this->post('/import', [
+        'account_id' => $account->id,
+        'file' => UploadedFile::fake()->createWithContent('extrato.pdf', "%PDF-1.4\nfake"),
+    ]);
+    $response->assertRedirect();
+    $token = basename(parse_url($response->headers->get('Location'), PHP_URL_PATH));
+
+    Storage::disk('local')->assertExists("imports/{$token}.pdf");
+    $this->get($response->headers->get('Location'))->assertOk()
+        ->assertSee('Extrato lido do PDF')->assertSee('PADARIA CENTRAL')->assertSee('Conferido');
+
+    $this->post("/import/{$token}", ['account_id' => $account->id, 'rows' => [10, 12]])->assertRedirect('/transactions');
+
+    expect(Transaction::where('account_id', $account->id)->orderBy('date')->pluck('amount_cents')->all())->toBe([-1250, 150000]);
+    Storage::disk('local')->assertMissing("imports/{$token}.pdf");
+
+    // Importing the same statement again adds nothing.
+    $again = $this->post('/import', ['account_id' => $account->id, 'file' => UploadedFile::fake()->createWithContent('extrato.pdf', "%PDF-1.4\nfake")]);
+    $token2 = basename(parse_url($again->headers->get('Location'), PHP_URL_PATH));
+    $this->post("/import/{$token2}", ['account_id' => $account->id, 'rows' => [10, 12]]);
+    expect(Transaction::count())->toBe(2);
+});
+
+it('says so when a PDF is not a layout it can read', function () {
+    ['account' => $account] = household();
+
+    $this->post('/import', ['account_id' => $account->id, 'file' => UploadedFile::fake()->createWithContent('x.pdf', "%PDF-1.4\nnot a statement")])
+        ->assertSessionHasErrors('file');
+    expect(Storage::disk('local')->files('imports'))->toBe([]);
+});
+
+it('flags rows that overlap an earlier import worded differently, instead of doubling them up', function () {
+    ['account' => $account] = household();
+    $service = app(ImportService::class);
+
+    // A mid-month export, imported earlier...
+    $first = $service->prepare($account, [
+        ['line' => 1, 'date' => '2026-10-05', 'description' => 'COMPRA 1234 PADARIA CENTRAL', 'amount_cents' => -840],
+        ['line' => 2, 'date' => '2026-10-07', 'description' => 'TRF P/ ANA EXEMPLO', 'amount_cents' => -2000],
+    ]);
+    $service->commit($account, $first);
+
+    // ...and the full-month statement, where the bank spells the same movements slightly differently.
+    $second = $service->prepare($account, [
+        ['line' => 1, 'date' => '2026-10-05', 'description' => 'COMPRA 1234 PADARIA CENTRAL CONTACTLESS', 'amount_cents' => -840],
+        ['line' => 2, 'date' => '2026-10-07', 'description' => 'TRF P/ ANA EXEMPLO', 'amount_cents' => -2000],
+        ['line' => 3, 'date' => '2026-10-20', 'description' => 'COMPRA 1234 OUTRA LOJA', 'amount_cents' => -500],
+    ]);
+
+    expect(array_column($second, 'status'))->toBe(['maybe', 'duplicate', 'new']);
+});
+
+it('keeps legitimate repeats: three identical coffees are one duplicate each, not all maybes', function () {
+    ['account' => $account] = household();
+    $service = app(ImportService::class);
+    $coffee = fn ($line) => ['line' => $line, 'date' => '2026-10-05', 'description' => 'CAFE CENTRAL', 'amount_cents' => -120];
+
+    $service->commit($account, $service->prepare($account, [$coffee(1), $coffee(2)]));
+    $again = $service->prepare($account, [$coffee(1), $coffee(2), $coffee(3)]);
+
+    // Two were imported before and match exactly; only the third is new.
+    expect(array_column($again, 'status'))->toBe(['duplicate', 'duplicate', 'new']);
+});
+
+it('counts a manual entry only once against the rows of a statement', function () {
+    ['account' => $account] = household();
+    Transaction::create(['account_id' => $account->id, 'date' => '2026-10-05', 'description' => 'typed by hand', 'amount_cents' => -840]);
+
+    $rows = [
+        ['line' => 1, 'date' => '2026-10-05', 'description' => 'COMPRA A', 'amount_cents' => -840],
+        ['line' => 2, 'date' => '2026-10-05', 'description' => 'COMPRA B', 'amount_cents' => -840],
+    ];
+
+    // One of the two can be the manual entry; the other cannot, so it is genuinely new.
+    expect(array_column(app(ImportService::class)->prepare($account, $rows), 'status'))->toBe(['maybe', 'new']);
 });
