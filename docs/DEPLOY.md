@@ -7,7 +7,7 @@ O Tostão foi pensado para correr no teu computador ou num servidor pequeno. Esc
 ### Com Laravel Herd (Windows, macOS)
 
 ```sh
-git clone https://github.com/<utilizador>/tostao.git
+git clone https://github.com/carlospinhowedev/tostao.git
 cd tostao
 composer setup
 herd link tostao        # http://tostao.test

@@ -42,7 +42,7 @@ Dois a viver juntos, uma conta conjunta, duas contas pessoais e um extrato em CS
 Requisitos: PHP 8.4+, Composer, Node 20+ (só para compilar os ficheiros de interface).
 
 ```sh
-git clone https://github.com/<utilizador>/tostao.git
+git clone https://github.com/carlospinhowedev/tostao.git
 cd tostao
 composer setup      # dependências, .env, chave, base de dados SQLite, build
 php artisan serve
