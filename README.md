@@ -26,6 +26,10 @@ Dois a viver juntos, uma conta conjunta, duas contas pessoais e um extrato em CS
 
 - **Painel por pessoa e por categoria.** Despesa e receita de cada membro e do que é comum, gráfico por categoria, evolução dos últimos seis meses, maiores despesas e saldo das contas.
 - **Importação de CSV do banco.** Deteta separador, codificação, formato da data e colunas; aceita montantes como `-5,50 €`, `1.234,56` ou `(12.30)`; coluna única de montante ou débito e crédito separados. Pré-visualização linha a linha antes de guardar. [Guia](docs/IMPORT.md)
+- **Ligação direta ao banco (opcional).** Em vez de ficheiros, o Tostão pode ir buscar os movimentos via open banking (PSD2), só em leitura. Os bancos vêm do fornecedor, por isso acrescentar um banco não exige código, e acrescentar um fornecedor é uma classe e uma linha de configuração. Desligado por omissão. [Guia](docs/BANKS.md)
+- **Investimentos.** Contas de corretora com o valor por dia e o dinheiro que lá pões e tiras como transferências (nunca como despesa). Trading 212 por API; outras à mão. [Guia](docs/INVESTMENTS.md)
+- **Transferências entre as tuas contas.** O Tostão propõe os pares (sai de uma conta, entra noutra) e tu confirmas; deixam de contar como despesa e receita.
+- **Cópias de segurança.** `php artisan tostao:backup`, também agendado todas as noites. [Guia](docs/DEPLOY.md)
 - **Importar duas vezes é seguro.** Cada linha tem uma assinatura estável; as já importadas ficam assinaladas. Linhas idênticas no mesmo dia (três cafés) são todas mantidas.
 - **Regras de categorização.** "A descrição contém `PINGO DOCE` → Supermercado". Preenchem a categoria e a pessoa na importação.
 - **Orçamentos mensais** por categoria, com barra de progresso e aviso quando passam do limite.

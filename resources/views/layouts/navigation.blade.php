@@ -7,6 +7,9 @@
     ];
     $more = [
         ['accounts.index', __('Accounts'), 'accounts.*'],
+        ['banks.index', __('Bank connections'), 'banks.*'],
+        ['transfers.index', __('Transfers between accounts'), 'transfers.*'],
+        ['brokers.index', __('Investments'), 'brokers.*'],
         ['categories.index', __('Categories and budgets'), 'categories.*'],
         ['rules.index', __('Rules'), 'rules.*'],
         ['recurring.index', __('Recurring'), 'recurring.*'],

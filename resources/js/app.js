@@ -5,6 +5,37 @@ import { Chart, BarController, BarElement, CategoryScale, LinearScale, Tooltip, 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 window.Alpine = Alpine;
+
+/**
+ * A transactions-table row whose category and person can be changed in place.
+ * Each change is saved at once; the little state flag shows saving / saved / failed.
+ */
+Alpine.data('quickRow', (url, category, owner) => ({
+    category: category ?? '',
+    owner,
+    state: '',
+    async save() {
+        this.state = 'saving';
+        try {
+            const response = await fetch(url, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                },
+                body: JSON.stringify({ category_id: this.category || null, owner: this.owner }),
+            });
+            this.state = response.ok ? 'saved' : 'error';
+        } catch (e) {
+            this.state = 'error';
+        }
+        if (this.state === 'saved') {
+            setTimeout(() => { this.state = ''; }, 1500);
+        }
+    },
+}));
+
 Alpine.start();
 
 /**

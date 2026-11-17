@@ -23,7 +23,7 @@ it('has a Portuguese translation for every string in the app', function () {
         preg_match_all('/(?:__|trans_choice)\(\s*(?:\'((?:[^\'\\\\]|\\\\.)*)\'|"((?:[^"\\\\]|\\\\.)*)")/', file_get_contents($path), $matches, PREG_SET_ORDER);
         foreach ($matches as $m) {
             $key = str_replace("\\'", "'", $m[1] !== '' ? $m[1] : ($m[2] ?? ''));
-            if ($key !== '' && ! array_key_exists($key, $translations) && ! str_contains($key, '.')) {
+            if ($key !== '' && ! array_key_exists($key, $translations) && ! (str_contains($key, '.') && ! str_contains($key, ' '))) {
                 $missing[$key] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $path);
             }
         }

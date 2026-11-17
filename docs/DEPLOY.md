@@ -96,3 +96,19 @@ php artisan optimize
 **Como mudo a moeda?** `TOSTAO_CURRENCY=USD` no `.env`. Os montantes são sempre guardados em cêntimos da moeda escolhida; não há conversão.
 
 **Como acrescento outro idioma?** Copia `lang/pt.json` para `lang/<código>.json`, traduz os valores e acrescenta o código em `config/tostao.php`.
+
+## Cópias de segurança
+
+A base de dados SQLite é o único sítio onde estão as tuas finanças. O comando
+
+```bash
+php artisan tostao:backup
+```
+
+guarda uma cópia consistente em `storage/app/private/backups/` (funciona com a aplicação a correr) e mantém as 14 mais recentes (`--keep=30` para mudar). Com o agendador do Laravel ativo, corre sozinho todas as noites às 03:00.
+
+Uma cópia na mesma máquina não protege contra um disco avariado: copia essa pasta para outro sítio (outro disco, um serviço de ficheiros em que confies).
+
+Com MySQL ou PostgreSQL o comando recusa-se a correr; usa `mysqldump` ou `pg_dump` no teu agendador.
+
+Para restaurar com SQLite, para a aplicação e substitui `database/database.sqlite` pelo ficheiro da cópia.

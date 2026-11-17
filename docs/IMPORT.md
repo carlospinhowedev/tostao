@@ -61,3 +61,7 @@ A procura ignora maiúsculas e minúsculas e procura em qualquer parte da descri
 O ficheiro é guardado em `storage/app/private/imports` apenas até confirmares. Ficheiros abandonados são apagados ao fim de um dia (`php artisan tostao:prune-imports`, corre sozinho com o agendador). Nunca é enviado a terceiros.
 
 Se abrires um issue por causa de um banco que não funciona, **apaga os dados reais** e deixa só a estrutura (cabeçalho e formato das datas e dos montantes).
+
+## Extratos com cabeçalho a meio e codificação UTF-16
+
+Alguns bancos (o Millennium bcp, por exemplo) exportam o ficheiro em UTF-16 e põem algumas linhas com dados da conta (saldo, período) antes da tabela de movimentos. O Tostão deteta a codificação, procura a linha de cabeçalho (a primeira que tem uma coluna de data e uma de montante) e ignora o que vem antes, bem como linhas de rodapé de uma só coluna. Montantes como `-20.00` e `1113.32` são lidos com o ponto como separador decimal.

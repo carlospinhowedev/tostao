@@ -2,6 +2,7 @@
 
 use App\Models\Rule;
 use App\Models\Transaction;
+use App\Services\CsvImporter;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -121,4 +122,51 @@ it('rejects files that are not text tables', function () {
 
     $this->post('/import', ['account_id' => $account->id, 'file' => UploadedFile::fake()->create('virus.exe', 10)])
         ->assertSessionHasErrors('file');
+});
+
+/** A statement shaped like the ones Millennium bcp exports: UTF-16 without a BOM, account details above the header. Invented content. */
+function utf16Statement(): string
+{
+    $text = "banco-exemplo.pt\r\nSaldos e movimentos\r\nEXTRATO DA CONTA À ORDEM Nº;00000000001\r\nMoeda base:;EUR\r\nSaldo disponível:;100.00\r\nData de:;01-11-2026\r\nData até:;17-11-2026\r\n\r\n"
+        ."Data lançamento;Data valor;Descrição;Montante;Tipo;Saldo\r\n"
+        ."16-11-2026;16-11-2026;COMPRA 0000 PADARIA CENTRAL;-3.40;Débito;100.00\r\n"
+        ."10-11-2026;10-11-2026;TRF P/ EMPRESA EXEMPLO LDA;1250.00;Crédito;103.40\r\n"
+        ."03-11-2026;03-11-2026;PAGAMENTO SERVIÇOS;-1080.00;Débito;-1146.60\r\n"
+        ."O banco-exemplo.pt é um serviço do Banco Exemplo S.A.\r\n";
+
+    return mb_convert_encoding($text, 'UTF-16LE', 'UTF-8');
+}
+
+it('imports a UTF-16 statement with account details above the header', function () {
+    ['account' => $account] = household();
+    $path = tempnam(sys_get_temp_dir(), 'utf16');
+    file_put_contents($path, utf16Statement());
+
+    $response = $this->post('/import', [
+        'account_id' => $account->id,
+        'file' => new UploadedFile($path, 'MOVS.csv', 'text/csv', null, true),
+    ]);
+    $response->assertRedirect();
+
+    $this->get($response->headers->get('Location'))
+        ->assertOk()
+        ->assertSee('PADARIA CENTRAL')
+        ->assertSee('EMPRESA EXEMPLO LDA')
+        ->assertSee('PAGAMENTO SERVIÇOS')
+        ->assertDontSee('Saldos e movimentos');
+});
+
+it('reads the header, delimiter, dates and dot decimals of that statement', function () {
+    $importer = new CsvImporter;
+    $text = $importer->normalise(utf16Statement());
+    $rows = $importer->readRows($text, $importer->detectDelimiter($text));
+    $header = $importer->headerKey($rows);
+    $map = $importer->guessMapping($rows[$header]);
+    $result = $importer->parse($text, ';', true, $map, 'd-m-Y');
+
+    expect($importer->detectDelimiter($text))->toBe(';')
+        ->and($map)->toBe(['date' => 0, 'description' => 2, 'amount' => 3, 'debit' => null, 'credit' => null])
+        ->and($result['skipped'])->toBe([])
+        ->and(array_column($result['rows'], 'amount_cents'))->toBe([-340, 125000, -108000])
+        ->and($result['rows'][0]['date'])->toBe('2026-11-16');
 });

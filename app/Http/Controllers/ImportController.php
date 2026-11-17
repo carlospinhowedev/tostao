@@ -116,11 +116,18 @@ class ImportController extends Controller
         $delimiter = $delimiter === 'tab' ? "\t" : $delimiter;
         $delimiter = array_key_exists((string) $delimiter, CsvImporter::DELIMITERS) ? $delimiter : $this->importer->detectDelimiter($text);
 
-        $rows = array_values($this->importer->readRows($text, $delimiter));
-        $hasHeader = $request->has('delimiter') ? $request->boolean('has_header') : $this->looksLikeHeader($rows[0] ?? []);
-        $columns = $hasHeader ? ($rows[0] ?? []) : array_map(fn ($i) => __('Column').' '.($i + 1), array_keys($rows[0] ?? []));
+        $all = $this->importer->readRows($text, $delimiter);
+        $detected = $this->importer->headerKey($all);
+        $headerKey = $detected ?? array_key_first($all);
+        $first = $all[array_key_first($all)] ?? [];
 
-        $guess = $hasHeader ? $this->importer->guessMapping($rows[0] ?? []) : ['date' => 0, 'description' => 1, 'amount' => 2, 'debit' => null, 'credit' => null];
+        // Rows below the header (or all of them, when there is none).
+        $hasHeader = $request->has('delimiter') ? $request->boolean('has_header') : ($detected !== null || $this->looksLikeHeader($first));
+        $header = $all[$headerKey] ?? [];
+        $rows = array_values($hasHeader ? array_filter($all, fn ($k) => $k > $headerKey, ARRAY_FILTER_USE_KEY) : $all);
+        $columns = $hasHeader ? $header : array_map(fn ($i) => __('Column').' '.($i + 1), array_keys($first));
+
+        $guess = $hasHeader ? $this->importer->guessMapping($header) : ['date' => 0, 'description' => 1, 'amount' => 2, 'debit' => null, 'credit' => null];
 
         $pick = fn (string $key) => $request->has('delimiter')
             ? ($request->input($key) === null || $request->input($key) === '' ? null : (int) $request->input($key))
@@ -128,7 +135,7 @@ class ImportController extends Controller
 
         $map = ['date' => $pick('date'), 'description' => $pick('description'), 'amount' => $pick('amount'), 'debit' => $pick('debit'), 'credit' => $pick('credit')];
 
-        $samples = array_filter(array_map(fn ($r) => $r[$map['date'] ?? 0] ?? null, array_slice($rows, $hasHeader ? 1 : 0, 15)));
+        $samples = array_filter(array_map(fn ($r) => $r[$map['date'] ?? 0] ?? null, array_slice($rows, 0, 15)));
         $dateFormat = $request->input('date_format');
         $dateFormat = array_key_exists((string) $dateFormat, DateParser::FORMATS) ? $dateFormat : DateParser::guessFormat($samples);
 

@@ -9,7 +9,8 @@ use App\Support\Money;
  * Turns the text of a bank export into normalised rows.
  *
  * Banks disagree on everything: delimiter, encoding, date format, decimal
- * separator, a single signed amount column or separate debit/credit columns.
+ * separator, a single signed amount column or separate debit/credit columns,
+ * and how many lines of account details come before the transactions.
  * This class detects what it can and lets the user override the rest.
  */
 class CsvImporter
@@ -19,6 +20,7 @@ class CsvImporter
     /** @return string text in UTF-8 without a BOM */
     public function normalise(string $raw): string
     {
+        $raw = $this->fromUtf16($raw) ?? $raw;
         $raw = preg_replace('/^\xEF\xBB\xBF/', '', $raw);
 
         if (! mb_check_encoding($raw, 'UTF-8')) {
@@ -26,6 +28,45 @@ class CsvImporter
         }
 
         return str_replace(["\r\n", "\r"], "\n", $raw);
+    }
+
+    /**
+     * Some banks (Millennium bcp, for one) export UTF-16, often with no byte
+     * order mark. Mostly-ASCII text in two bytes per character is full of NUL
+     * bytes: all in the odd positions for little-endian, the even ones for
+     * big-endian. Returns null when the text is not UTF-16.
+     */
+    private function fromUtf16(string $raw): ?string
+    {
+        if (str_starts_with($raw, "\xFF\xFE")) {
+            return mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE');
+        }
+        if (str_starts_with($raw, "\xFE\xFF")) {
+            return mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE');
+        }
+
+        $sample = substr($raw, 0, 400);
+        $length = strlen($sample);
+        if ($length < 4 || ! str_contains($sample, "\0")) {
+            return null;
+        }
+
+        $odd = $even = 0;
+        for ($i = 0; $i < $length; $i++) {
+            if ($sample[$i] === "\0") {
+                $i % 2 === 0 ? $even++ : $odd++;
+            }
+        }
+
+        $half = $length / 2;
+        if ($odd > $half * 0.6 && $even < $half * 0.1) {
+            return mb_convert_encoding($raw, 'UTF-8', 'UTF-16LE');
+        }
+        if ($even > $half * 0.6 && $odd < $half * 0.1) {
+            return mb_convert_encoding($raw, 'UTF-8', 'UTF-16BE');
+        }
+
+        return null;
     }
 
     public function detectDelimiter(string $text): string
@@ -70,6 +111,29 @@ class CsvImporter
     }
 
     /**
+     * The key of the header row. Many banks put a few lines of account details
+     * above it (name, balance, period), so the header is the first row that
+     * names both a date column and an amount column. Null when none does.
+     *
+     * @param  array<int, list<string>>  $rows  as returned by readRows()
+     */
+    public function headerKey(array $rows): ?int
+    {
+        foreach (array_slice($rows, 0, 40, true) as $key => $cells) {
+            if (count($cells) < 3) {
+                continue;
+            }
+
+            $map = $this->guessMapping($cells);
+            if ($map['date'] !== null && ($map['amount'] !== null || $map['debit'] !== null || $map['credit'] !== null)) {
+                return $key;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Guess which column is what, from the header names (or the content).
      *
      * @param  list<string>  $header
@@ -111,10 +175,15 @@ class CsvImporter
         $rows = [];
         $skipped = [];
 
-        $headerIndex = array_key_first($all);
+        $headerIndex = $this->headerKey($all) ?? array_key_first($all);
 
         foreach ($all as $index => $cells) {
-            if ($hasHeader && $index === $headerIndex) {
+            // Everything up to and including the header is not a transaction.
+            if ($hasHeader && $index <= $headerIndex) {
+                continue;
+            }
+            // Titles and footers are one cell wide; real rows never are.
+            if (count($cells) < 2) {
                 continue;
             }
             $line = $index + 1;

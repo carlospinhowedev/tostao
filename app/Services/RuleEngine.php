@@ -15,14 +15,14 @@ class RuleEngine
     private ?Collection $rules = null;
 
     /** @return array{category_id: ?int, owner_id: ?int, set_owner: bool} */
-    public function suggest(string $description): array
+    public function suggest(string $description, ?int $amountCents = null): array
     {
         $this->rules ??= Rule::orderBy('priority')->orderBy('id')->get();
 
         $result = ['category_id' => null, 'owner_id' => null, 'set_owner' => false];
 
         foreach ($this->rules as $rule) {
-            if (! $rule->matches($description)) {
+            if (! $rule->matches($description, $amountCents)) {
                 continue;
             }
             if ($result['category_id'] === null && $rule->category_id) {

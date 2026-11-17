@@ -25,6 +25,9 @@ O ficheiro é guardado num identificador aleatório (UUID) e, em cada passo, rel
 ### Recorrentes sem cron obrigatório
 Quem aloja em casa raramente configura um agendador. Por isso o painel gera os recorrentes vencidos sempre que alguém o abre, e o comando `tostao:recurring` (agendado diariamente) faz o mesmo para quem tiver cron. Cada item avança a sua própria `next_date`, por isso apanhar três meses em atraso cria exatamente três movimentos, uma vez. O dia do mês fica guardado (`day_of_month`): um item do dia 31 cai a 28 em fevereiro e volta a 31 em março, em vez de ficar preso ao 28.
 
+### Bancos atrás de uma interface
+A ligação aos bancos (opcional) não fala com nenhum banco em concreto. `App\Banking\BankProvider` descreve o que é preciso (lista de bancos, consentimento, movimentos) e `BankRegistry` descobre os fornecedores em `config/tostao.php`. A lista de bancos é sempre devolvida pelo fornecedor, nunca escrita no código. Os movimentos entram pelo `ImportService`, o mesmo caminho do CSV, por isso regras e duplicados não têm uma segunda implementação. Ver [BANKS.md](BANKS.md).
+
 ### Interface sem dependências externas em runtime
 Tipo de letra (Inter) e bibliotecas vão compiladas no próprio build. Nenhum pedido a CDNs ou serviços de terceiros: coerente com uma aplicação cuja promessa é privacidade. As cores são variáveis CSS, o modo escuro está num só sítio (`resources/css/app.css`).
 

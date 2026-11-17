@@ -44,6 +44,11 @@ class ImportService
             // Identical rows on the same day are legitimate (three coffees), so the
             // occurrence number is part of the hash.
             $hash = hash('sha256', $account->id.'|'.$key.'|'.$seen[$key]);
+            // A bank that gives every movement its own reference is a better identity
+            // than guessing from the text, and survives the bank rewording a description.
+            if (! empty($row['external_id'])) {
+                $hash = hash('sha256', $account->id.'|ref|'.$row['external_id']);
+            }
 
             $status = 'new';
             if ($hashes->has($hash)) {
@@ -52,7 +57,7 @@ class ImportService
                 $status = 'maybe';
             }
 
-            $out[] = $row + ['hash' => $hash, 'status' => $status] + $this->rules->suggest($row['description']);
+            $out[] = $row + ['hash' => $hash, 'status' => $status] + $this->rules->suggest($row['description'], $row['amount_cents']);
         }
 
         return $out;

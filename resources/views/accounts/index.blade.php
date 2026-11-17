@@ -13,7 +13,7 @@
                     <summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
                         <div>
                             <div class="font-medium">{{ $a->name }} @if ($a->archived)<span class="pill ml-1">{{ __('Archived') }}</span>@endif</div>
-                            <div class="muted">{{ __($a->type === 'bank' ? 'Bank account' : ($a->type === 'card' ? 'Card' : ($a->type === 'cash' ? 'Cash' : 'Savings'))) }} · {{ $a->owner?->name ?? __('Shared') }}</div>
+                            <div class="muted">{{ \App\Models\Account::label($a->type) }} · {{ $a->owner?->name ?? __('Shared') }}</div>
                         </div>
                         <x-money :cents="$a->balanceCents()" class="text-lg font-semibold" />
                     </summary>
@@ -22,7 +22,7 @@
                         <x-field :label="__('Name')"><input name="name" class="input" required value="{{ $a->name }}"></x-field>
                         <x-field :label="__('Type')">
                             <select name="type" class="input">
-                                @foreach (\App\Models\Account::TYPES as $t)<option value="{{ $t }}" @selected($a->type === $t)>{{ __(['bank' => 'Bank account', 'card' => 'Card', 'cash' => 'Cash', 'savings' => 'Savings'][$t]) }}</option>@endforeach
+                                @foreach (\App\Models\Account::TYPES as $t)<option value="{{ $t }}" @selected($a->type === $t)>{{ \App\Models\Account::label($t) }}</option>@endforeach
                             </select>
                         </x-field>
                         <x-field :label="__('Opening balance')"><input name="opening_balance" class="input" inputmode="decimal" value="{{ $a->opening_balance_cents < 0 ? '-' : '' }}{{ \App\Support\Money::input($a->opening_balance_cents) }}"></x-field>
@@ -44,7 +44,7 @@
             <x-field :label="__('Name')" for="name"><input id="name" name="name" class="input" required placeholder="{{ __('Joint account') }}"></x-field>
             <x-field :label="__('Type')" for="type">
                 <select id="type" name="type" class="input">
-                    @foreach (\App\Models\Account::TYPES as $t)<option value="{{ $t }}">{{ __(['bank' => 'Bank account', 'card' => 'Card', 'cash' => 'Cash', 'savings' => 'Savings'][$t]) }}</option>@endforeach
+                    @foreach (\App\Models\Account::TYPES as $t)<option value="{{ $t }}">{{ \App\Models\Account::label($t) }}</option>@endforeach
                 </select>
             </x-field>
             <x-field :label="__('Opening balance')" for="opening_balance"><input id="opening_balance" name="opening_balance" class="input" inputmode="decimal" placeholder="0,00"></x-field>
