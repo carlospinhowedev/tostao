@@ -1,0 +1,58 @@
+<?php
+
+return [
+    'accepted' => 'O campo :attribute tem de ser aceite.',
+    'after_or_equal' => 'O campo :attribute tem de ser uma data igual ou posterior a :date.',
+    'array' => 'O campo :attribute tem de ser uma lista.',
+    'between' => [
+        'numeric' => 'O campo :attribute tem de estar entre :min e :max.',
+        'string' => 'O campo :attribute tem de ter entre :min e :max caracteres.',
+    ],
+    'boolean' => 'O campo :attribute tem de ser verdadeiro ou falso.',
+    'confirmed' => 'A confirmação do campo :attribute não coincide.',
+    'current_password' => 'A palavra-passe está incorreta.',
+    'date' => 'O campo :attribute não é uma data válida.',
+    'different' => 'Os campos :attribute e :other têm de ser diferentes.',
+    'email' => 'O campo :attribute tem de ser um email válido.',
+    'exists' => 'O valor escolhido para :attribute não é válido.',
+    'extensions' => 'O ficheiro :attribute tem de ser de um dos tipos: :values.',
+    'file' => 'O campo :attribute tem de ser um ficheiro.',
+    'in' => 'O valor escolhido para :attribute não é válido.',
+    'integer' => 'O campo :attribute tem de ser um número inteiro.',
+    'lowercase' => 'O campo :attribute tem de estar em minúsculas.',
+    'max' => [
+        'file' => 'O ficheiro :attribute não pode ter mais de :max kilobytes.',
+        'numeric' => 'O campo :attribute não pode ser superior a :max.',
+        'string' => 'O campo :attribute não pode ter mais de :max caracteres.',
+    ],
+    'min' => [
+        'array' => 'O campo :attribute tem de ter pelo menos :min itens.',
+        'numeric' => 'O campo :attribute tem de ser pelo menos :min.',
+        'string' => 'O campo :attribute tem de ter pelo menos :min caracteres.',
+    ],
+    'regex' => 'O formato do campo :attribute é inválido.',
+    'required' => 'O campo :attribute é obrigatório.',
+    'string' => 'O campo :attribute tem de ser texto.',
+    'unique' => 'Já existe um registo com este :attribute.',
+    'password' => [
+        'letters' => 'A :attribute tem de conter pelo menos uma letra.',
+        'mixed' => 'A :attribute tem de conter maiúsculas e minúsculas.',
+        'numbers' => 'A :attribute tem de conter pelo menos um número.',
+        'symbols' => 'A :attribute tem de conter pelo menos um símbolo.',
+        'uncompromised' => 'Esta :attribute apareceu numa fuga de dados. Escolhe outra.',
+    ],
+
+    'attributes' => [
+        'name' => 'nome',
+        'email' => 'email',
+        'password' => 'palavra-passe',
+        'description' => 'descrição',
+        'amount' => 'montante',
+        'date' => 'data',
+        'file' => 'ficheiro',
+        'pattern' => 'palavra-chave',
+        'category_id' => 'categoria',
+        'account_id' => 'conta',
+        'color' => 'cor',
+    ],
+];
